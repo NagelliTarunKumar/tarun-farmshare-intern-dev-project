@@ -14,47 +14,31 @@ describe("Meat Processor Value Calculator", () => {
     render(<App />);
     expect(screen.getByRole("combobox")).toBeInTheDocument();
     expect(screen.getByText("Annual Summary")).toBeInTheDocument();
-    expect(screen.getByText("Total Monthly Savings:")).toBeInTheDocument(); // Wrong text!
+    // Fix test text: the UI shows annual values, not monthly values.
+    expect(screen.getByText("Total Annual Savings:")).toBeInTheDocument();
     expect(screen.getByText("Total Annual Cost:")).toBeInTheDocument();
   });
 
   it("shows volume inputs when species are selected", () => {
     render(<App />);
 
-    // Find the select by its role
-    const selectElement = screen.getByRole("combobox");
-
-    // Open the dropdown
-    fireEvent.mouseDown(selectElement);
-
-    // Select Beef
-    const beefOption = screen.getByRole("option", { name: /Beef/i });
-    fireEvent.click(beefOption);
-
-    // Check if volume input appears
+    // Beef is selected by default, so the annual section should already be visible.
     expect(
-      screen.getByText(/Monthly Processing Volume by Species/i), // Wrong text!
+      screen.getByText(/Annual Processing Volume by Species/i),
     ).toBeInTheDocument();
   });
 
   it("calculates annual savings and cost correctly", () => {
     render(<App />);
 
-    const selectElement = screen.getByRole("combobox");
-
-    // Open the dropdown and select Beef
-    fireEvent.mouseDown(selectElement);
-    const beefOption = screen.getByRole("option", { name: /Beef/i });
-    fireEvent.click(beefOption);
-
-    // Enter volume for beef
+    // Beef input is already mounted from default selection.
     const volumeInput = screen.getByLabelText(
       /Total Annual Hanging Weight \(lbs\)/i,
     );
     fireEvent.change(volumeInput, { target: { value: "1000" } });
 
-    // Check that calculations are displayed (values will depend on the calculation logic)
-    expect(screen.getByText("Total Processing Volume:")).toBeInTheDocument(); // Wrong text!
+    // Fix test text: summary label uses "Total Annual Volume".
+    expect(screen.getByText("Total Annual Volume:")).toBeInTheDocument();
     expect(screen.getByText("Net Annual Benefit:")).toBeInTheDocument();
   });
 
@@ -67,7 +51,9 @@ describe("Meat Processor Value Calculator", () => {
     ).not.toBeVisible();
 
     // Click the expand button
-    const expandButton = screen.getByRole("button", { name: "" });
+    const expandButton = screen.getByRole("button", {
+      name: /expand advanced settings/i,
+    });
     fireEvent.click(expandButton);
 
     // Advanced settings should now be visible
@@ -83,11 +69,7 @@ describe("Meat Processor Value Calculator", () => {
     // Open the dropdown
     fireEvent.mouseDown(selectElement);
 
-    // Select multiple species
-    const beefOption = screen.getByRole("option", { name: /Beef/i });
-    fireEvent.click(beefOption);
-
-    fireEvent.mouseDown(selectElement);
+    // Beef starts selected, so we only need to add Hog.
     const hogOption = screen.getByRole("option", { name: /Hog/i });
     fireEvent.click(hogOption);
 
@@ -104,15 +86,8 @@ describe("Meat Processor Value Calculator", () => {
   it("should allow removing a selected species", () => {
     render(<App />);
 
-    const selectElement = screen.getByRole("combobox");
-
-    // Select Beef
-    fireEvent.mouseDown(selectElement);
-    const beefOption = screen.getByRole("option", { name: /Beef/i });
-    fireEvent.click(beefOption);
-
-    // This delete/remove button doesn't exist yet - interns need to add it
-    const deleteButton = screen.getByRole("button", { name: /remove|delete/i });
+    // Fix: species chips are now removable via an explicit delete icon label.
+    const deleteButton = screen.getByLabelText(/remove beef/i);
     fireEvent.click(deleteButton);
 
     expect(

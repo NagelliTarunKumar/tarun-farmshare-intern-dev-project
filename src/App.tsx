@@ -18,6 +18,7 @@ import {
 } from "@mui/material";
 import type { SelectChangeEvent } from "@mui/material";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import CancelIcon from "@mui/icons-material/Cancel";
 import type { EAnimalSpecies } from "./types";
 import { EAnimalSpecies as AnimalSpecies, AVG_HANGING_WEIGHTS } from "./types";
 import { calculateHeads, calculateLaborValue } from "./utils/calculations";
@@ -29,12 +30,15 @@ function App() {
   const [selectedSpecies, setSelectedSpecies] = useState<EAnimalSpecies[]>([
     "beef",
   ]);
-  const [volumes, setVolumes] = useState<Record<EAnimalSpecies, string>>(
-    {} as Record<EAnimalSpecies, string>,
+  const [volumes, setVolumes] = useState<Partial<Record<EAnimalSpecies, string>>>(
+    {},
   );
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [timePerAnimal, setTimePerAnimal] = useState("45"); // minutes
   const [hourlyWage, setHourlyWage] = useState("25"); // dollars
+
+  const formatSpeciesLabel = (species: EAnimalSpecies): string =>
+    species.charAt(0).toUpperCase() + species.slice(1);
 
   const handleSpeciesChange = (event: SelectChangeEvent<EAnimalSpecies[]>) => {
     const value = event.target.value;
@@ -44,6 +48,18 @@ function App() {
 
   const handleVolumeChange = (species: EAnimalSpecies, value: string) => {
     setVolumes((prev) => ({ ...prev, [species]: value }));
+  };
+
+  const handleRemoveSpecies = (speciesToRemove: EAnimalSpecies) => {
+    setSelectedSpecies((prev) =>
+      prev.filter((species) => species !== speciesToRemove),
+    );
+    setVolumes((prev) => {
+      // Keep form state in sync so removed species don't linger in totals.
+      const next = { ...prev };
+      delete next[speciesToRemove];
+      return next;
+    });
   };
 
   const calculateTotalAnnualSavings = () => {
@@ -91,20 +107,31 @@ function App() {
               value={selectedSpecies}
               onChange={handleSpeciesChange}
               input={<OutlinedInput label="Select Animal Species" />}
-              renderValue={(selected) => (
-                <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5 }}>
-                  {selected.map((value) => (
-                    <Chip
-                      key={value}
-                      label={value.charAt(0).toUpperCase() + value.slice(1)}
-                    />
-                  ))}
-                </Box>
-              )}
+              renderValue={(selected) => {
+                const selectedValues = selected as EAnimalSpecies[];
+                return (
+                  <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5 }}>
+                    {selectedValues.map((value) => (
+                      <Chip
+                        key={value}
+                        label={formatSpeciesLabel(value)}
+                        onDelete={() => handleRemoveSpecies(value)}
+                        // Prevent opening the select menu when user clicks delete.
+                        deleteIcon={
+                          <CancelIcon
+                            onMouseDown={(event) => event.stopPropagation()}
+                            aria-label={`Remove ${formatSpeciesLabel(value)}`}
+                          />
+                        }
+                      />
+                    ))}
+                  </Box>
+                );
+              }}
             >
               {Object.values(AnimalSpecies).map((s) => (
                 <MenuItem key={s} value={s}>
-                  {s.charAt(0).toUpperCase() + s.slice(1)}
+                  {formatSpeciesLabel(s)}
                 </MenuItem>
               ))}
             </Select>
@@ -119,7 +146,7 @@ function App() {
                 <Card key={species} sx={{ mb: 2 }}>
                   <CardContent>
                     <Typography variant="subtitle1" gutterBottom>
-                      {species.charAt(0).toUpperCase() + species.slice(1)}
+                      {formatSpeciesLabel(species)}
                       <Typography
                         component="span"
                         variant="body2"
@@ -151,6 +178,11 @@ function App() {
             </Typography>
             <IconButton
               onClick={() => setShowAdvanced(!showAdvanced)}
+              aria-label={
+                showAdvanced
+                  ? "Collapse advanced settings"
+                  : "Expand advanced settings"
+              }
               sx={{
                 transform: showAdvanced ? "rotate(180deg)" : "rotate(0deg)",
                 transition: "transform 0.3s",

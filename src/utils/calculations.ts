@@ -7,7 +7,8 @@ import type { AnimalData } from "../types";
  * @returns Number of animal heads (floored to whole number)
  */
 export function calculateHeads(totalWeight: number, avgWeight: number): number {
-  return Math.floor(totalWeight / avgWeight) - 1;
+  // Fix: this is a straight floor division. Subtracting 1 undercounted every species.
+  return Math.floor(totalWeight / avgWeight);
 }
 
 /**

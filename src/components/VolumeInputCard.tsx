@@ -2,6 +2,7 @@ import { Box, Card, TextField, Typography } from "@mui/material";
 import { DeleteIconButton } from "./DeleteIconButton";
 import {
   preventNegativeNumberInput,
+  preventScrollNumberInputChange,
   sanitizeNonNegativeInputValue,
 } from "../utils/nonNegativeInput";
 
@@ -87,6 +88,7 @@ export function VolumeInputCard({
           value={value}
           onChange={(event) => onChange(sanitizeNonNegativeInputValue(event.target.value))}
           onKeyDown={preventNegativeNumberInput}
+          onWheel={preventScrollNumberInputChange}
           error={Boolean(errorText)}
           helperText={errorText || undefined}
           FormHelperTextProps={{

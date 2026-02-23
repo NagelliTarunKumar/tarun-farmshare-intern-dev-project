@@ -43,6 +43,7 @@ import { EAnimalSpecies as AnimalSpecies, AVG_HANGING_WEIGHTS } from "./types";
 import { calculateHeads, calculateLaborValue } from "./utils/calculations";
 import {
   preventNegativeNumberInput,
+  preventScrollNumberInputChange,
   sanitizeNonNegativeInputValue,
 } from "./utils/nonNegativeInput";
 import farmshareLogo from "./assets/farmshare.svg";
@@ -83,6 +84,12 @@ interface PersistedUiState {
   workspaceTab: "calculator" | "comparison";
   analyticsTab: "species" | "distribution";
   showAdvanced: boolean;
+}
+
+interface CalculatorHydrationResult {
+  state: PersistedCalculatorState;
+  restored: boolean;
+  failed: boolean;
 }
 
 interface ToastState {
@@ -279,6 +286,62 @@ function sanitizeSavedScenario(raw: unknown): SavedScenario | null {
   };
 }
 
+function getInitialCalculatorState(): CalculatorHydrationResult {
+  const fallback: PersistedCalculatorState = {
+    selectedSpecies: ["beef"],
+    volumes: {},
+    timePerAnimal: DEFAULT_SETTINGS.timePerAnimal,
+    hourlyWage: DEFAULT_SETTINGS.hourlyWage,
+  };
+
+  if (typeof window === "undefined") {
+    return { state: fallback, restored: false, failed: false };
+  }
+
+  try {
+    const raw = localStorage.getItem(CALCULATOR_STORAGE_KEY);
+    if (!raw) {
+      return { state: fallback, restored: false, failed: false };
+    }
+
+    const parsed = JSON.parse(raw) as Partial<PersistedCalculatorState>;
+    const selectedSpecies = Array.isArray(parsed.selectedSpecies)
+      ? parsed.selectedSpecies.filter(
+          (species): species is EAnimalSpecies =>
+            typeof species === "string" && isAllowedSpecies(species),
+        )
+      : [];
+
+    const volumes: Partial<Record<EAnimalSpecies, string>> = {};
+    if (parsed.volumes && typeof parsed.volumes === "object") {
+      for (const [species, rawValue] of Object.entries(parsed.volumes)) {
+        if (isAllowedSpecies(species) && typeof rawValue === "string") {
+          volumes[species] = sanitizeNonNegativeInputValue(rawValue);
+        }
+      }
+    }
+
+    return {
+      state: {
+        selectedSpecies,
+        volumes,
+        timePerAnimal:
+          typeof parsed.timePerAnimal === "string"
+            ? sanitizeNonNegativeInputValue(parsed.timePerAnimal)
+            : DEFAULT_SETTINGS.timePerAnimal,
+        hourlyWage:
+          typeof parsed.hourlyWage === "string"
+            ? sanitizeNonNegativeInputValue(parsed.hourlyWage)
+            : DEFAULT_SETTINGS.hourlyWage,
+      },
+      restored: true,
+      failed: false,
+    };
+  } catch {
+    return { state: fallback, restored: false, failed: true };
+  }
+}
+
 function polarToCartesian(
   centerX: number,
   centerY: number,
@@ -316,14 +379,23 @@ function createDonutSlicePath(
 }
 
 function App() {
+  const initialCalculatorHydration = useMemo(() => getInitialCalculatorState(), []);
   const [workspaceTab, setWorkspaceTab] = useState<"calculator" | "comparison">(
     "calculator",
   );
-  const [selectedSpecies, setSelectedSpecies] = useState<EAnimalSpecies[]>(["beef"]);
-  const [volumes, setVolumes] = useState<Partial<Record<EAnimalSpecies, string>>>({});
+  const [selectedSpecies, setSelectedSpecies] = useState<EAnimalSpecies[]>(
+    initialCalculatorHydration.state.selectedSpecies,
+  );
+  const [volumes, setVolumes] = useState<Partial<Record<EAnimalSpecies, string>>>(
+    initialCalculatorHydration.state.volumes,
+  );
   const [showAdvanced, setShowAdvanced] = useState(false);
-  const [timePerAnimal, setTimePerAnimal] = useState(DEFAULT_SETTINGS.timePerAnimal);
-  const [hourlyWage, setHourlyWage] = useState(DEFAULT_SETTINGS.hourlyWage);
+  const [timePerAnimal, setTimePerAnimal] = useState(
+    initialCalculatorHydration.state.timePerAnimal,
+  );
+  const [hourlyWage, setHourlyWage] = useState(
+    initialCalculatorHydration.state.hourlyWage,
+  );
   const [savedScenarios, setSavedScenarios] = useState<SavedScenario[]>([]);
   const [scenarioDialog, setScenarioDialog] = useState<ScenarioDialogState>({
     open: false,
@@ -344,7 +416,6 @@ function App() {
     tone: "default",
   });
 
-  const [hasLoadedCalculatorState, setHasLoadedCalculatorState] = useState(false);
   const [hasLoadedScenarioState, setHasLoadedScenarioState] = useState(false);
   const [hasLoadedUiState, setHasLoadedUiState] = useState(false);
   const toastIdRef = useRef(0);
@@ -360,57 +431,16 @@ function App() {
   };
 
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(CALCULATOR_STORAGE_KEY);
-      if (!raw) {
-        setHasLoadedCalculatorState(true);
-        return;
-      }
-
-      const parsed = JSON.parse(raw) as Partial<PersistedCalculatorState>;
-      const restoredSpecies: EAnimalSpecies[] = Array.isArray(
-        parsed.selectedSpecies,
-      )
-        ? parsed.selectedSpecies.filter(
-            (species): species is EAnimalSpecies =>
-              typeof species === "string" && isAllowedSpecies(species),
-          )
-        : ["beef"];
-
-      const restoredVolumes: Partial<Record<EAnimalSpecies, string>> = {};
-      if (parsed.volumes && typeof parsed.volumes === "object") {
-        for (const [species, rawValue] of Object.entries(parsed.volumes)) {
-          if (isAllowedSpecies(species) && typeof rawValue === "string") {
-            restoredVolumes[species] = sanitizeNonNegativeInputValue(rawValue);
-          }
-        }
-      }
-
-      setSelectedSpecies(restoredSpecies.length > 0 ? restoredSpecies : []);
-      setVolumes(restoredVolumes);
-      setTimePerAnimal(
-        typeof parsed.timePerAnimal === "string"
-          ? sanitizeNonNegativeInputValue(parsed.timePerAnimal)
-          : DEFAULT_SETTINGS.timePerAnimal,
-      );
-      setHourlyWage(
-        typeof parsed.hourlyWage === "string"
-          ? sanitizeNonNegativeInputValue(parsed.hourlyWage)
-          : DEFAULT_SETTINGS.hourlyWage,
-      );
-
-      openToast("Restored your previous calculator session", "info");
-    } catch (error) {
+    if (initialCalculatorHydration.failed) {
       openToast("Could not restore saved calculator data", "warning");
-      console.error("Failed to load persisted calculator state", error);
-    } finally {
-      setHasLoadedCalculatorState(true);
+      return;
     }
-  }, []);
+    if (initialCalculatorHydration.restored) {
+      openToast("Restored your previous calculator session", "info");
+    }
+  }, [initialCalculatorHydration.failed, initialCalculatorHydration.restored]);
 
   useEffect(() => {
-    if (!hasLoadedCalculatorState) return;
-
     const payload: PersistedCalculatorState = {
       selectedSpecies,
       volumes,
@@ -423,7 +453,7 @@ function App() {
     } catch (error) {
       console.error("Failed to persist calculator state", error);
     }
-  }, [hasLoadedCalculatorState, hourlyWage, selectedSpecies, timePerAnimal, volumes]);
+  }, [hourlyWage, selectedSpecies, timePerAnimal, volumes]);
 
   useEffect(() => {
     try {
@@ -1567,6 +1597,7 @@ function App() {
                           )
                         }
                         onKeyDown={preventNegativeNumberInput}
+                        onWheel={preventScrollNumberInputChange}
                         error={Boolean(timePerAnimalError)}
                         helperText={timePerAnimalError ?? " "}
                         inputProps={{ min: 0, max: MAX_TIME_PER_ANIMAL, step: 1 }}
@@ -1583,6 +1614,7 @@ function App() {
                           )
                         }
                         onKeyDown={preventNegativeNumberInput}
+                        onWheel={preventScrollNumberInputChange}
                         error={Boolean(hourlyWageError)}
                         helperText={hourlyWageError ?? " "}
                         inputProps={{ min: 0, max: MAX_HOURLY_WAGE, step: 0.5 }}

@@ -20,6 +20,7 @@ import { EAnimalSpecies as AnimalSpecies, AVG_HANGING_WEIGHTS } from "../types";
 import { calculateHeads, calculateLaborValue } from "../utils/calculations";
 import {
   preventNegativeNumberInput,
+  preventScrollNumberInputChange,
   sanitizeNonNegativeInputValue,
 } from "../utils/nonNegativeInput";
 import type { SavedScenario } from "../scenarios";
@@ -237,6 +238,7 @@ export function ComparisonScenarioCard({
             })
           }
           onKeyDown={preventNegativeNumberInput}
+          onWheel={preventScrollNumberInputChange}
           inputProps={{ min: 0, step: 1 }}
         />
         <TextField
@@ -251,6 +253,7 @@ export function ComparisonScenarioCard({
             })
           }
           onKeyDown={preventNegativeNumberInput}
+          onWheel={preventScrollNumberInputChange}
           inputProps={{ min: 0, step: 0.5 }}
         />
       </Stack>
@@ -308,6 +311,7 @@ export function ComparisonScenarioCard({
               value={scenario.volumes[species] ?? ""}
               onChange={(event) => handleVolumeChange(species, event.target.value)}
               onKeyDown={preventNegativeNumberInput}
+              onWheel={preventScrollNumberInputChange}
               inputProps={{ min: 0, step: 1 }}
               sx={{ mt: 0.7, width: "100%" }}
             />

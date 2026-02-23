@@ -1,95 +1,105 @@
-import { describe, it, expect } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { beforeEach, describe, expect, it } from "vitest";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import App from "./App";
 
+function expectSummaryRowValue(label: string, value: string | RegExp): void {
+  const labelNode = screen.getByText(label);
+  const row = labelNode.closest("div");
+
+  if (!row) {
+    throw new Error(`Could not find summary row for label: ${label}`);
+  }
+
+  expect(within(row).getByText(value)).toBeInTheDocument();
+}
+
 describe("Meat Processor Value Calculator", () => {
-  it("renders the calculator title", () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  it("renders the navbar title and annual summary", () => {
     render(<App />);
+
     expect(
       screen.getByText("Meat Processor Value Calculator"),
     ).toBeInTheDocument();
-  });
-
-  it("displays the multi-select dropdown and summary", () => {
-    render(<App />);
-    expect(screen.getByRole("combobox")).toBeInTheDocument();
     expect(screen.getByText("Annual Summary")).toBeInTheDocument();
-    // Fix test text: the UI shows annual values, not monthly values.
-    expect(screen.getByText("Total Annual Savings:")).toBeInTheDocument();
-    expect(screen.getByText("Total Annual Cost:")).toBeInTheDocument();
-  });
-
-  it("shows volume inputs when species are selected", () => {
-    render(<App />);
-
-    // Beef is selected by default, so the annual section should already be visible.
+    expect(screen.getByText("Analytics Dashboard")).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "By Species" })).toBeInTheDocument();
     expect(
-      screen.getByText(/Annual Processing Volume by Species/i),
+      screen.getByRole("tab", { name: "Volume Distribution" }),
     ).toBeInTheDocument();
   });
 
-  it("calculates annual savings and cost correctly", () => {
+  it("renders default annual summary values", () => {
     render(<App />);
 
-    // Beef input is already mounted from default selection.
+    expectSummaryRowValue("Total Annual Volume:", "0 lbs");
+    expectSummaryRowValue("Total Annual Savings:", "$0.00");
+    expectSummaryRowValue("Total Annual Cost:", "$0.00");
+
+    expect(screen.queryByText("All selected species")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("Animals processed per year"),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText("Labor value gained")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("Savings minus software cost"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("updates annual summary rows when annual volume changes", () => {
+    render(<App />);
+
     const volumeInput = screen.getByLabelText(
       /Total Annual Hanging Weight \(lbs\)/i,
     );
     fireEvent.change(volumeInput, { target: { value: "1000" } });
 
-    // Fix test text: summary label uses "Total Annual Volume".
-    expect(screen.getByText("Total Annual Volume:")).toBeInTheDocument();
-    expect(screen.getByText("Net Annual Benefit:")).toBeInTheDocument();
+    expectSummaryRowValue("Total Annual Volume:", "1,000 lbs");
+    expectSummaryRowValue("Total Annual Savings:", "$18.75");
+    expectSummaryRowValue("Total Annual Cost:", "$20.00");
   });
 
-  it("shows advanced settings when clicked", () => {
+  it("shows and hides advanced settings", () => {
     render(<App />);
 
-    // Advanced settings should be hidden initially
     expect(
       screen.queryByLabelText(/Time Savings per Animal/i),
     ).not.toBeVisible();
 
-    // Click the expand button
-    const expandButton = screen.getByRole("button", {
-      name: /expand advanced settings/i,
-    });
-    fireEvent.click(expandButton);
+    fireEvent.click(
+      screen.getByRole("button", { name: /expand advanced settings/i }),
+    );
 
-    // Advanced settings should now be visible
     expect(screen.getByLabelText(/Time Savings per Animal/i)).toBeVisible();
     expect(screen.getByLabelText(/Average Hourly Wage/i)).toBeVisible();
   });
 
-  it("can select multiple species", () => {
+  it("can select and remove species", () => {
     render(<App />);
 
-    const selectElement = screen.getByRole("combobox");
+    const selectElement = screen
+      .getAllByRole("combobox")
+      .find((combobox) => /beef/i.test(combobox.textContent ?? ""));
 
-    // Open the dropdown
+    expect(selectElement).toBeDefined();
+    if (!selectElement) {
+      throw new Error("Could not find species combobox");
+    }
+
     fireEvent.mouseDown(selectElement);
+    fireEvent.click(screen.getByRole("option", { name: /Hog/i }));
 
-    // Beef starts selected, so we only need to add Hog.
-    const hogOption = screen.getByRole("option", { name: /Hog/i });
-    fireEvent.click(hogOption);
-
-    // Check if chips are displayed for both species
     expect(
       screen.getByText("Beef", { selector: ".MuiChip-label" }),
     ).toBeInTheDocument();
     expect(
       screen.getByText("Hog", { selector: ".MuiChip-label" }),
     ).toBeInTheDocument();
-  });
 
-  // FAILING TEST - Interns need to add delete/remove functionality
-  it("should allow removing a selected species", () => {
-    render(<App />);
-
-    // Fix: species chips are now removable via an explicit delete icon label.
-    const deleteButton = screen.getByLabelText(/remove beef/i);
-    fireEvent.click(deleteButton);
-
+    fireEvent.click(screen.getAllByLabelText(/remove beef/i)[0]);
     expect(
       screen.queryByText("Beef", { selector: ".MuiChip-label" }),
     ).not.toBeInTheDocument();

@@ -31,6 +31,10 @@ describe("calculations utils", () => {
     it("should handle zero total weight", () => {
       expect(calculateHeads(0, 500)).toBe(0); // Should be 0
     });
+
+    it("should handle decimal average weight values", () => {
+      expect(calculateHeads(1050, 250.5)).toBe(4);
+    });
   });
 
   describe("calculateLaborValue", () => {
@@ -158,6 +162,19 @@ describe("calculations utils", () => {
       // 3 heads * 30 min = 1.5 hrs * $25 = $37.50
       // Total = $137.50
       expect(calculateTotalLaborValue(animals, 30, 25)).toBe(137.5);
+    });
+
+    it("should support fractional time and wage inputs", () => {
+      const animals: AnimalData[] = [
+        {
+          species: EAnimalSpecies.beef,
+          totalHangingWeight: 1000,
+          avgHangingWeight: 500,
+        }, // 2 heads
+      ];
+
+      // 2 heads * 22.5 min = 45 min = 0.75 hr * $19.75 = $14.8125
+      expect(calculateTotalLaborValue(animals, 22.5, 19.75)).toBe(14.8125);
     });
   });
 });

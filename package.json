@@ -9,7 +9,7 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "test": "vitest"
+    "test": "NODE_OPTIONS=--experimental-require-module vitest"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",

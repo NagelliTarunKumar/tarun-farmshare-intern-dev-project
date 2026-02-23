@@ -170,6 +170,16 @@ function triggerFileDownload(blob: Blob, fileName: string): void {
   window.URL.revokeObjectURL(fileUrl);
 }
 
+function formatCsvCell(value: string | number): string {
+  const rawValue = String(value);
+  if (!/[",\n]/.test(rawValue)) return rawValue;
+  return `"${rawValue.replace(/"/g, "\"\"")}"`;
+}
+
+function formatCsvRow(values: Array<string | number>): string {
+  return values.map((value) => formatCsvCell(value)).join(",");
+}
+
 function getNumericValue(value: string | undefined): number {
   if (!value || value.trim() === "") return 0;
   const parsed = Number.parseFloat(value);
@@ -819,7 +829,8 @@ function App() {
     : "Not set";
 
   const hasAnyVolume = speciesMetrics.some((metric) => metric.volume > 0);
-  const canExportCsv = hasAnyVolume;
+  const canExportCsv =
+    workspaceTab === "calculator" ? hasAnyVolume : savedScenarios.length > 0;
   const canExportPdf =
     workspaceTab === "calculator" ? hasAnyVolume : savedScenarios.length > 0;
   const isExportDisabled = !canExportCsv && !canExportPdf;
@@ -879,72 +890,188 @@ function App() {
   }, [distributionData]);
 
   const handleExportCsv = () => {
+    if (workspaceTab === "comparison") {
+      if (savedScenarios.length === 0) {
+        openToast("Create at least one scenario before exporting", "warning");
+        return;
+      }
+
+      const csvLines: string[] = [
+        formatCsvRow(["Farmshare Comparison Export"]),
+        formatCsvRow(["Generated At", new Date().toLocaleString()]),
+        formatCsvRow(["Scenario Count", savedScenarios.length]),
+        "",
+      ];
+
+      // Each scenario gets its own block so spreadsheet users can scan one scenario at a time.
+      savedScenarios.forEach((scenario, index) => {
+        const scenarioName = scenario.name.trim() || `Scenario ${index + 1}`;
+        const scenarioTime = Math.max(0, getNumericValue(scenario.timePerAnimal));
+        const scenarioWage = Math.max(0, getNumericValue(scenario.hourlyWage));
+        const scenarioMetrics = scenario.selectedSpecies.map((species) => {
+          const volume = Math.max(0, getNumericValue(scenario.volumes[species]));
+          const heads = calculateHeads(volume, AVG_HANGING_WEIGHTS[species]);
+          const savings = calculateLaborValue(heads, scenarioTime, scenarioWage);
+          const annualCost = volume * COST_PER_LB;
+
+          return {
+            label: formatSpeciesLabel(species),
+            volume,
+            heads,
+            savings,
+            annualCost,
+            net: savings - annualCost,
+          };
+        });
+
+        const totalVolume = scenarioMetrics.reduce((sum, metric) => sum + metric.volume, 0);
+        const totalSavings = scenarioMetrics.reduce((sum, metric) => sum + metric.savings, 0);
+        const totalCost = scenarioMetrics.reduce((sum, metric) => sum + metric.annualCost, 0);
+        const totalNet = totalSavings - totalCost;
+
+        csvLines.push(formatCsvRow([`Scenario: ${scenarioName}`]));
+        csvLines.push(formatCsvRow(["Assumptions"]));
+        csvLines.push(formatCsvRow(["Time per animal (min)", scenarioTime.toFixed(2)]));
+        csvLines.push(formatCsvRow(["Hourly wage ($)", scenarioWage.toFixed(2)]));
+        csvLines.push("");
+        csvLines.push(formatCsvRow(["Species Breakdown"]));
+        csvLines.push(
+          formatCsvRow([
+            "Species",
+            "Annual Volume (lbs)",
+            "Estimated Heads",
+            "Annual Savings ($)",
+            "Annual Cost ($)",
+            "Net Benefit ($)",
+          ]),
+        );
+
+        if (scenarioMetrics.length === 0) {
+          csvLines.push(formatCsvRow(["No species selected", "", "", "", "", ""]));
+        } else {
+          scenarioMetrics.forEach((metric) => {
+            csvLines.push(
+              formatCsvRow([
+                metric.label,
+                metric.volume.toFixed(2),
+                metric.heads,
+                metric.savings.toFixed(2),
+                metric.annualCost.toFixed(2),
+                metric.net.toFixed(2),
+              ]),
+            );
+          });
+        }
+
+        csvLines.push("");
+        csvLines.push(formatCsvRow(["Scenario Summary"]));
+        csvLines.push(formatCsvRow(["Metric", "Annual", "Monthly"]));
+        csvLines.push(
+          formatCsvRow([
+            "Total Volume (lbs)",
+            totalVolume.toFixed(2),
+            (totalVolume / 12).toFixed(2),
+          ]),
+        );
+        csvLines.push(
+          formatCsvRow([
+            "Total Savings ($)",
+            totalSavings.toFixed(2),
+            (totalSavings / 12).toFixed(2),
+          ]),
+        );
+        csvLines.push(
+          formatCsvRow([
+            "Total Cost ($)",
+            totalCost.toFixed(2),
+            (totalCost / 12).toFixed(2),
+          ]),
+        );
+        csvLines.push(
+          formatCsvRow([
+            "Net Benefit ($)",
+            totalNet.toFixed(2),
+            (totalNet / 12).toFixed(2),
+          ]),
+        );
+        csvLines.push("");
+      });
+
+      const csvBlob = new Blob([csvLines.join("\n")], { type: "text/csv" });
+      triggerFileDownload(
+        csvBlob,
+        `farmshare-comparison-${new Date().toISOString().slice(0, 10)}.csv`,
+      );
+      openToast("Comparison CSV export created", "success", "added");
+      return;
+    }
+
     if (!hasAnyVolume) {
       openToast("Add annual volume data before exporting", "warning");
       return;
     }
 
     const csvLines: string[] = [
-      [
+      formatCsvRow([
         "Species",
         "Annual Volume (lbs)",
         "Estimated Heads",
         "Annual Savings ($)",
         "Annual Cost ($)",
         "Net Benefit ($)",
-      ].join(","),
+      ]),
     ];
 
     for (const metric of speciesMetrics) {
       if (metric.volume <= 0) continue;
       csvLines.push(
-        [
+        formatCsvRow([
           metric.label,
           metric.volume.toFixed(2),
-          metric.heads.toString(),
+          metric.heads,
           metric.savings.toFixed(2),
           metric.annualCost.toFixed(2),
           (metric.savings - metric.annualCost).toFixed(2),
-        ].join(","),
+        ]),
       );
     }
 
     csvLines.push("");
-    csvLines.push("Totals");
+    csvLines.push(formatCsvRow(["Totals"]));
     csvLines.push(
-      [
+      formatCsvRow([
         "Total Annual Volume",
         totalAnnualVolume.toFixed(2),
         "",
         "",
         "",
         "",
-      ].join(","),
+      ]),
     );
     csvLines.push(
-      [
+      formatCsvRow([
         "Total Annual Savings",
         totalAnnualSavings.toFixed(2),
         "",
         "",
         "",
         "",
-      ].join(","),
+      ]),
     );
     csvLines.push(
-      ["Total Annual Cost", totalAnnualCost.toFixed(2), "", "", "", ""].join(","),
+      formatCsvRow(["Total Annual Cost", totalAnnualCost.toFixed(2), "", "", "", ""]),
     );
     csvLines.push(
-      ["Net Annual Benefit", netAnnualBenefit.toFixed(2), "", "", "", ""].join(","),
+      formatCsvRow(["Net Annual Benefit", netAnnualBenefit.toFixed(2), "", "", "", ""]),
     );
 
     csvLines.push("");
-    csvLines.push("Monthly Breakdown");
-    csvLines.push("Metric,Value");
-    csvLines.push(["Monthly Volume (lbs)", monthlyVolume.toFixed(2)].join(","));
-    csvLines.push(["Monthly Savings ($)", monthlySavings.toFixed(2)].join(","));
-    csvLines.push(["Monthly Cost ($)", monthlyCost.toFixed(2)].join(","));
-    csvLines.push(["Monthly Net Benefit ($)", monthlyNetBenefit.toFixed(2)].join(","));
+    csvLines.push(formatCsvRow(["Monthly Breakdown"]));
+    csvLines.push(formatCsvRow(["Metric", "Value"]));
+    csvLines.push(formatCsvRow(["Monthly Volume (lbs)", monthlyVolume.toFixed(2)]));
+    csvLines.push(formatCsvRow(["Monthly Savings ($)", monthlySavings.toFixed(2)]));
+    csvLines.push(formatCsvRow(["Monthly Cost ($)", monthlyCost.toFixed(2)]));
+    csvLines.push(formatCsvRow(["Monthly Net Benefit ($)", monthlyNetBenefit.toFixed(2)]));
 
     const csvBlob = new Blob([csvLines.join("\n")], { type: "text/csv" });
     triggerFileDownload(
